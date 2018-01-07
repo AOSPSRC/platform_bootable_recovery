@@ -378,7 +378,15 @@ static void adb_cleanup(void)
 
 int adb_main()
 {
+    //调用exit,在子进程退出时执行adb_cleanup,atexit函数称为终止处理程序注册程序，注册完成以后，当函数终止时exit()函数会主动的调用前面注册的各个函数
     atexit(adb_cleanup);
+    //HAVE_FORKEXEC定义在<private/android_filesystem_config.h>中,
+    /*
+     * Process creation model.	Choose one:
+     *
+     * HAVE_FORKEXEC - use fork() and exec()
+     * HAVE_WIN32_PROC - use CreateProcess()
+     */
 #if defined(HAVE_FORKEXEC)
     // No SIGCHLD. Let the service subproc handle its children.
     signal(SIGPIPE, SIG_IGN);
@@ -387,6 +395,8 @@ int adb_main()
     init_transport_registration();
 
     // The minimal version of adbd only uses USB.
+    // USB_ADB_PATH /dev/android_adb, USB_FFS_ADB_EP0扩展后是/dev/usb-ffs/adb/ep0
+    // 从内核版本3.8开始，adb功能的实现发生了变化，把它的实现从内核代码中移除，在用户空间借助usb的functionfs功能实现adb
     if (access(USB_ADB_PATH, F_OK) == 0 || access(USB_FFS_ADB_EP0, F_OK) == 0) {
         // listen on USB
         usb_init();

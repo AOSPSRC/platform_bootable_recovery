@@ -229,6 +229,7 @@ static void usb_adb_kick(usb_handle *h)
 static void usb_adb_init()
 {
     usb_handle *h;
+    // #define adb_cond_t pthread_cond_t
     adb_thread_t tid;
     int fd;
 
@@ -239,6 +240,8 @@ static void usb_adb_init()
     h->kick = usb_adb_kick;
     h->fd = -1;
 
+    // minadbd/sysdeps.h:290:#define adb_cond_init pthread_cond_init 初始化条件变量
+    // define adb_mutex_init pthread_mutex_init
     adb_cond_init(&h->notify, 0);
     adb_mutex_init(&h->lock, 0);
 
@@ -248,6 +251,7 @@ static void usb_adb_init()
     // We never touch this file again - just leave it open
     // indefinitely so the kernel will know when we are running
     // and when we are not.
+    // /dev/android_adb_enable打开后就不用管了
     fd = unix_open("/dev/android_adb_enable", O_RDWR);
     fprintf(stderr, "unix_open to open usb_init(): %d\n", fd);
     if (fd < 0) {
@@ -257,6 +261,7 @@ static void usb_adb_init()
     }
 
     D("[ usb_init - starting thread ]\n");
+    // 调用adb_thread_create创建一个线程,执行函数usb_adb_open_thread
     if(adb_thread_create(&tid, usb_adb_open_thread, h)){
         fatal_errno("cannot create usb thread");
         fprintf(stderr, "cannot create the usb thread()\n");

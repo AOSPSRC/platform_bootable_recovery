@@ -278,11 +278,15 @@ static void fdevent_disconnect(fdevent *fde)
     select_n = n + 1;
 }
 
+// 1根据event在fde的fd中加入和清除对应的文件描述符
+// 2将events代表的EVENT标志位(即FDE_READ,FDE_WRITE或FDE_ERROR)加入到fde的state
 static void fdevent_update(fdevent *fde, unsigned events)
 {
     if(events & FDE_READ) {
+        // FD_SET用于在文件描述符集合中增加一个新的文件描述符
         FD_SET(fde->fd, &read_fds);
     } else {
+        // FD_CLR用于在文件描述符集合中删除一个文件描述符
         FD_CLR(fde->fd, &read_fds);
     }
     if(events & FDE_WRITE) {
@@ -431,12 +435,15 @@ static void fdevent_register(fdevent *fde)
         FATAL("bogus negative fd (%d)\n", fde->fd);
     }
 
+    //fd_table_max初始值为0
     if(fde->fd >= fd_table_max) {
         int oldmax = fd_table_max;
         if(fde->fd > 32000) {
             FATAL("bogus huuuuge fd (%d)\n", fde->fd);
         }
+        //如果fd_table_max为0,说明为第一次进入,调用fdevent_init初始化,将fd_table_max设为256
         if(fd_table_max == 0) {
+            //fdevent_init中初始化用于读写的fd_set:read_fds,write_fds,error_fds
             fdevent_init();
             fd_table_max = 256;
         }
@@ -447,6 +454,7 @@ static void fdevent_register(fdevent *fde)
         if(fd_table == 0) {
             FATAL("could not expand fd_table to %d entries\n", fd_table_max);
         }
+        //初始化新增的fdevent
         memset(fd_table + oldmax, 0, sizeof(int) * (fd_table_max - oldmax));
     }
 
@@ -602,7 +610,9 @@ void fdevent_install(fdevent *fde, int fd, fd_func func, void *arg)
 #ifndef HAVE_WINSOCK
     fcntl(fd, F_SETFL, O_NONBLOCK);
 #endif
+    //将fde注册到全局数组fd_table中,fd_table[fde->fd]=fde
     fdevent_register(fde);
+    //在debug版本中打印出fde的fd,是R,W还是E
     dump_fde(fde, "connect");
     fdevent_connect(fde);
     fde->state |= FDE_ACTIVE;
@@ -627,17 +637,30 @@ void fdevent_remove(fdevent *fde)
 
 void fdevent_set(fdevent *fde, unsigned events)
 {
+    // FDE_EVENTMASK用于取得和它相与的数的前8位
+    // FDE_STATEMASK于取得和它相与的数的前9-16位
+    // FDE_ACTIVE     0x0100 FDE_READ 0x0001
+    // FDE_PENDING    0x0200 FDE_WRITE 0x0002
+    // FDE_CREATED    0x0400 FDE_ERROR 0x0004
+    // 因此 如果events 和 fde->state的第
     events &= FDE_EVENTMASK;
 
+    // 如果fde->state 已经是events, 则返回
     if((fde->state & FDE_EVENTMASK) == events) return;
 
+    // 如果fde->state的二进制 第9位为1,则认为fde->state具有ACTIVE的STATE标志位
     if(fde->state & FDE_ACTIVE) {
+        // 如果fde->state具有ACTIVE的STATE标志位
+        // 则将events代表的EVENT标志位(即FDE_READ,FDE_WRITE或FDE_ERROR)加入到fde的state
         fdevent_update(fde, events);
+        // 由于DEBUG直接定义为0,D和dump_fde什么都不做
         dump_fde(fde, "update");
     }
 
+    // 将events代表的EVENT标志位(即FDE_READ,FDE_WRITE或FDE_ERROR)加入到fde的state
     fde->state = (fde->state & FDE_STATEMASK) | events;
 
+    // 如果fde->state含有FDE_PENDING标志位,即将fde->events清0,不在响应任何事件
     if(fde->state & FDE_PENDING) {
             /* if we're pending, make sure
             ** we don't signal an event that
